@@ -28,7 +28,7 @@ jobs:
       - name: Run Playwright tests
         working-directory: slack
         run: |
-          npx playwright test --reporter=json:test-results.json
+          npx playwright test
 
       - name: Parse Test Results
         id: results
