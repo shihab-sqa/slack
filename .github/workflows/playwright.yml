@@ -22,60 +22,94 @@ jobs:
       working-directory: slack
       run: npx playwright test
     - uses: actions/upload-artifact@v4
-      if: ${{ !cancelled() }}
-      with:
-        name: playwright-report
-        path: slack/playwright-report/
-        retention-days: 30
+      name: Playwright Tests
 
+      on:
+        push:
+          branches: [ main, master ]
+        pull_request:
+          branches: [ main, master ]
 
-    - name: Read Test Results
-        id: results
-        run: |
-          TOTAL=$(jq '[.suites[].specs[]] | length' test-results.json)
-          PASSED=$(jq '[.suites[].specs[] | select(.tests[].status == "expected")] | length' test-results.json)
-          FAILED=$(jq '[.suites[].specs[] | select(.tests[].status == "unexpected")] | length' test-results.json)
-          SKIPPED=$(jq '[.suites[].specs[] | select(.tests[].tests[].status == "skipped")] | length' test-results.json)
+      jobs:
+        test:
+          timeout-minutes: 60
+          runs-on: ubuntu-latest
+          steps:
+            - uses: actions/checkout@v4
 
-          echo "total=$TOTAL" >> $GITHUB_OUTPUT
-          echo "passed=$PASSED" >> $GITHUB_OUTPUT
-          echo "failed=$FAILED" >> $GITHUB_OUTPUT
-          echo "skipped=$SKIPPED" >> $GITHUB_OUTPUT
+            - uses: actions/setup-node@v4
+              with:
+                node-version: 'lts/*'
 
-      - name: Upload Playwright Report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-report
-          path: playwright-report/
-          retention-days: 30
+            - name: Install dependencies
+              working-directory: slack
+              run: npm ci
 
-      - name: Send Result to Slack
-        if: always()
-        env:
-          SLACK_WEBHOOK_URL: ${{ SLACK_BOT_TOKEN }}
+            - name: Install Playwright Browsers
+              working-directory: slack
+              run: npx playwright install --with-deps
 
-          SLACK_CHANNEL_ID: ${{ SLACK_CHANNEL_ID }}
-          TOTAL: ${{ steps.results.outputs.total }}
-          PASSED: ${{ steps.results.outputs.passed }}
-          FAILED: ${{ steps.results.outputs.failed }}
-          SKIPPED: ${{ steps.results.outputs.skipped }}
-          RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
+            - name: Run Playwright tests
+              working-directory: slack
+              run: |
+                # produce a JSON test results file for later parsing
+                npx playwright test --reporter=json:test-results.json
 
-          if [ "$FAILED" -eq 0 ]; then
-            STATUS="PASSED"
-          else
-            STATUS="FAILED"
-          fi
+            - name: Parse Test Results
+              id: results
+              working-directory: slack
+              run: |
+                if [ ! -f test-results.json ]; then
+                  echo "total=0" >> $GITHUB_OUTPUT
+                  echo "passed=0" >> $GITHUB_OUTPUT
+                  echo "failed=0" >> $GITHUB_OUTPUT
+                  echo "skipped=0" >> $GITHUB_OUTPUT
+                  exit 0
+                fi
+                TOTAL=$(jq '[.suites[].specs[]] | length' test-results.json)
+                PASSED=$(jq '[.suites[].specs[] | select(.tests[].status == "expected")] | length' test-results.json)
+                FAILED=$(jq '[.suites[].specs[] | select(.tests[].status == "unexpected")] | length' test-results.json)
+                SKIPPED=$(jq '[.suites[].specs[] | select(.tests[].tests[].status == "skipped")] | length' test-results.json)
+                echo "total=$TOTAL" >> $GITHUB_OUTPUT
+                echo "passed=$PASSED" >> $GITHUB_OUTPUT
+                echo "failed=$FAILED" >> $GITHUB_OUTPUT
+                echo "skipped=$SKIPPED" >> $GITHUB_OUTPUT
 
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            --data "{
-              \"text\": \"*✈️ Flight Automation Test Result*\n\n*Environment:* QA\n*Branch:* ${{ github.ref_name }}\n\n*📊 Test Summary*\n━━━━━━━━━━━━━━\n*Total Tests:* $TOTAL\n*✅ Passed:* $PASSED\n*❌ Failed:* $FAILED\n*⏭️ Skipped:* $SKIPPED\n\n*Status:* $STATUS\n\n*📋 GitHub Action:*\n$RUN_URL\"
-            }" \
-            "$SLACK_WEBHOOK_URL"
+            - name: Upload Playwright Report
+              if: always()
+              uses: actions/upload-artifact@v4
+              with:
+                name: playwright-report
+                path: slack/playwright-report/
+                retention-days: 30
 
-      - name: Fail Workflow If Tests Failed
-        if: steps.tests.outcome == 'failure'
-        run: exit 1
+            - name: Send Result to Slack
+              if: always()
+              env:
+                SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+                SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+                TOTAL: ${{ steps.results.outputs.total }}
+                PASSED: ${{ steps.results.outputs.passed }}
+                FAILED: ${{ steps.results.outputs.failed }}
+                SKIPPED: ${{ steps.results.outputs.skipped }}
+                RUN_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+              run: |
+                if [ "${FAILED}" -eq 0 ]; then
+                  STATUS="PASSED"
+                else
+                  STATUS="FAILED"
+                fi
+                cat > payload.json <<EOF
+                {
+                  "channel": "${SLACK_CHANNEL_ID}",
+                  "text": "*✈️ Flight Automation Test Result*\n\n*Environment:* QA\n*Branch:* ${{ github.ref_name }}\n\n*📊 Test Summary*\n━━━━━━━━━━━━━━\n*Total Tests:* ${TOTAL}\n*✅ Passed:* ${PASSED}\n*❌ Failed:* ${FAILED}\n*⏭️ Skipped:* ${SKIPPED}\n\n*Status:* ${STATUS}\n\n*📋 GitHub Action:*\n${RUN_URL}"
+                }
+                EOF
+                curl -X POST https://slack.com/api/chat.postMessage \
+                  -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
+                  -H "Content-Type: application/json; charset=utf-8" \
+                  --data @payload.json
+
+            - name: Fail Workflow If Tests Failed
+              if: ${{ steps.results.outputs.failed != '0' }}
+              run: exit 1
