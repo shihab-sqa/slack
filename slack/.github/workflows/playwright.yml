@@ -60,10 +60,10 @@ jobs:
           retention-days: 30
 
       - name: Send Result to Slack
-        if: always()
+        if: always() 
         env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
-          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+          SLACK_BOT_TOKEN: ${{ SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ SLACK_CHANNEL_ID}}
           TOTAL: ${{ steps.results.outputs.total }}
           PASSED: ${{ steps.results.outputs.passed }}
           FAILED: ${{ steps.results.outputs.failed }}
@@ -80,7 +80,7 @@ jobs:
             "text": "*✈️ Flight Automation Test Result*\n\n*Environment:* QA\n*Branch:* ${{ github.ref_name }}\n\n*📊 Test Summary*\n━━━━━━━━━━━━━━\n*Total Tests:* ${TOTAL}\n*✅ Passed:* ${PASSED}\n*❌ Failed:* ${FAILED}\n*⏭️ Skipped:* ${SKIPPED}\n\n*Status:* ${STATUS}\n\n*📋 GitHub Action:*\n${RUN_URL}"
           }
           EOF
-          curl -X POST -H "Content-Type: application/json" --data @payload.json "${SLACK_WEBHOOK_URL}"
+          curl -X POST -H "Content-Type: application/json" --data @payload.json "${SLACK_BOT_TOKEN}"
 
       - name: Fail Workflow If Tests Failed
         if: ${{ steps.results.outputs.failed != '0' }}
