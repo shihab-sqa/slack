@@ -32,17 +32,23 @@ jobs:
         if: always()
         id: results
         run: |
-          if [ ! -f test-results.json ]; then
+          if [ -f test-results.json ]; then
+            JSON_FILE=test-results.json
+          elif [ -f slack/test-results.json ]; then
+            JSON_FILE=slack/test-results.json
+          elif [ -f test-results/test-results.json ]; then
+            JSON_FILE=test-results/test-results.json
+          else
             echo "total=0" >> $GITHUB_OUTPUT
             echo "passed=0" >> $GITHUB_OUTPUT
             echo "failed=0" >> $GITHUB_OUTPUT
             echo "skipped=0" >> $GITHUB_OUTPUT
             exit 0
           fi
-          TOTAL=$(jq -r '(.stats.expected + .stats.unexpected + .stats.skipped) // ([.suites[].specs[].tests[]] | length)' test-results.json)
-          PASSED=$(jq -r '.stats.expected // ([.suites[].specs[].tests[] | select(.status == "expected")] | length)' test-results.json)
-          FAILED=$(jq -r '.stats.unexpected // ([.suites[].specs[].tests[] | select(.status == "unexpected")] | length)' test-results.json)
-          SKIPPED=$(jq -r '.stats.skipped // ([.suites[].specs[].tests[] | select(.status == "skipped")] | length)' test-results.json)
+          TOTAL=$(jq -r '(.stats.expected + .stats.unexpected + .stats.skipped) // ([.suites[].specs[].tests[]] | length)' "$JSON_FILE")
+          PASSED=$(jq -r '.stats.expected // ([.suites[].specs[].tests[] | select(.status == "expected")] | length)' "$JSON_FILE")
+          FAILED=$(jq -r '.stats.unexpected // ([.suites[].specs[].tests[] | select(.status == "unexpected")] | length)' "$JSON_FILE")
+          SKIPPED=$(jq -r '.stats.skipped // ([.suites[].specs[].tests[] | select(.status == "skipped")] | length)' "$JSON_FILE")
           TOTAL=${TOTAL:-0}
           PASSED=${PASSED:-0}
           FAILED=${FAILED:-0}
