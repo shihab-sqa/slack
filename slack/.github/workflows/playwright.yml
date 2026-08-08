@@ -75,10 +75,12 @@ jobs:
           else
             STATUS="FAILED"
           fi
-          curl -X POST \
-            -H "Content-Type: application/json" \
-            --data "{\n              \"text\": \"*✈️ Flight Automation Test Result*\\n\\n*Environment:* QA\\n*Branch:* ${{ github.ref_name }}\\n\\n*📊 Test Summary*\\n━━━━━━━━━━━━━━\\n*Total Tests:* ${TOTAL}\\n*✅ Passed:* ${PASSED}\\n*❌ Failed:* ${FAILED}\\n*⏭️ Skipped:* ${SKIPPED}\\n\\n*Status:* ${STATUS}\\n\\n*📋 GitHub Action:*\\n${RUN_URL}\"\n            }" \
-            "${SLACK_WEBHOOK_URL}"
+          cat > payload.json <<EOF
+          {
+            "text": "*✈️ Flight Automation Test Result*\n\n*Environment:* QA\n*Branch:* ${{ github.ref_name }}\n\n*📊 Test Summary*\n━━━━━━━━━━━━━━\n*Total Tests:* ${TOTAL}\n*✅ Passed:* ${PASSED}\n*❌ Failed:* ${FAILED}\n*⏭️ Skipped:* ${SKIPPED}\n\n*Status:* ${STATUS}\n\n*📋 GitHub Action:*\n${RUN_URL}"
+          }
+          EOF
+          curl -X POST -H "Content-Type: application/json" --data @payload.json "${SLACK_WEBHOOK_URL}"
 
       - name: Fail Workflow If Tests Failed
         if: ${{ steps.results.outputs.failed != '0' }}
